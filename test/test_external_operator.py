@@ -114,6 +114,29 @@ def test_properties(V1):
     assert str(e) == "∂e(w_0, w_1, 2 * w_2, w_3; v_1, v_0)/∂o1∂o3∂o4∂o4"
 
 
+@pytest.mark.parametrize("input_shape", [(), (2,), (2, 2)])
+@pytest.mark.parametrize("output_shape", [(), (2,), (2, 2)])
+def test_derivative_shape(domain_2d, input_shape, output_shape):
+    W = FunctionSpace(domain_2d, LagrangeElement(triangle, 2, input_shape))
+    V = FunctionSpace(domain_2d, LagrangeElement(triangle, 1, output_shape))
+    u = Coefficient(W)
+    N = ExternalOperator(u, function_space=V)
+    vstar = Coargument(V.dual(), 0)
+    first, second = Argument(W, 1), Argument(W, 2)
+
+    jacobian = expand_derivatives(derivative(N, u))
+    expected = N._ufl_expr_reconstruct_(u, derivatives=(1,), argument_slots=(vstar, first))
+    assert jacobian == expected
+    assert jacobian.ufl_shape == output_shape
+    assert jacobian.arguments() == (vstar, first)
+
+    hessian = expand_derivatives(derivative(jacobian, u))
+    expected = N._ufl_expr_reconstruct_(u, derivatives=(2,), argument_slots=(vstar, first, second))
+    assert hessian == expected
+    assert hessian.ufl_shape == output_shape
+    assert hessian.arguments() == (vstar, first, second)
+
+
 def test_dual_slot_must_be_a_base_form(V1):
     u = Coefficient(V1)
 
@@ -275,15 +298,14 @@ def test_differentiation_procedure_action(V1, V2, max_rank):
     a1 = inner(N1, m) * dx
     Ja1 = derivative(a1, u, u_hat)
     Ja1 = expand_derivatives(Ja1)
-    Ja1 = restructure_base_form(Ja1, max_composed_rank=max_rank)
 
     a2 = inner(N2, m) * dx
     Ja2 = derivative(a2, s, s_hat)
     Ja2 = expand_derivatives(Ja2)
-    Ja2 = restructure_base_form(Ja2, max_composed_rank=max_rank)
 
     # Ja = dF/dN[dN/du(..; v*, u_hat)]
     dN1du = N1._ufl_expr_reconstruct_(u, m, derivatives=(1, 0), argument_slots=(vstar_N1, u_hat))
+    assert Ja1 == conj(m) * dN1du * dx
     if max_rank == 1:
         # The Form fills the dual slot of the rank-two operator.
         slots = (conj(m) * TestFunction(V1) * dx, u_hat)
@@ -291,18 +313,19 @@ def test_differentiation_procedure_action(V1, V2, max_rank):
     else:
         # The operator stays in the integrand, with u_hat keeping its number.
         expected = conj(m) * dN1du * dx
-    assert Ja1 == expected
+    assert restructure_base_form(Ja1, max_composed_rank=max_rank) == expected
     dN1du_action = Action(dN1du, w)
 
     dN2du = N2._ufl_expr_reconstruct_(
         cos(s), derivatives=(1,), argument_slots=(vstar_N2, -sin(s) * s_hat)
     )
+    assert Ja2 == conj(m) * dN2du * dx
     if max_rank == 1:
         slots = (conj(m) * TestFunction(V1) * dx, -sin(s) * s_hat)
         expected = dN2du._ufl_expr_reconstruct_(cos(s), argument_slots=slots)
     else:
         expected = conj(m) * dN2du * dx
-    assert Ja2 == expected
+    assert restructure_base_form(Ja2, max_composed_rank=max_rank) == expected
     dN2du_action = Action(dN2du, r)
 
     # Check shape
@@ -570,16 +593,22 @@ def test_multiple_external_operators(V1, V2):
     assert dFdu == apply_algebra_lowering(expected)
 
     # dN5/dN4 acts on the sum dN4/du whole.
+    dFdu = expand_derivatives(derivative(inner(N5, v) * dx, u))
+    assert dFdu == apply_algebra_lowering(inner(dN5du, v) * dx)
+
     dN5dN4 = N5._ufl_expr_reconstruct_(
         N4, u, derivatives=(1, 0), argument_slots=N5.arguments() + (v_hat,)
     )
     dN4du_sum = Action(dN4dN1(v_hat), dN1du) + dN4du_partial
     expected = Action(dFdN, Action(dN5dN4, dN4du_sum)) + Action(dFdN, dN5du_partial)
-    dFdu = expand_derivatives(derivative(inner(N5, v) * dx, u))
     assert restructure_base_form(dFdu) == expected
 
-    # dN1/du is in dN4/du and in the integrand, so it moves out once, for both terms.
+    # The same dN1/du occurs in dN4/du and in the integrand.
     dFdu = expand_derivatives(derivative((inner(N4, v) + inner(N1, v)) * dx, u))
+    expected = (inner(dN4du, v) + inner(dN1du, v)) * dx
+    assert dFdu == apply_algebra_lowering(expected)
+
+    # Move dN1/du out once, for both terms.
     expected = Action(dFdN + Action(dFdN, dN4dN1(v_hat)), dN1du) + Action(dFdN, dN4du_partial)
     assert restructure_base_form(dFdu) == expected
 
@@ -647,7 +676,8 @@ def test_dual_slot_derivative(V1, V2):
 
 def test_dual_slot_second_derivative(V1, V2):
     u = Coefficient(V1)
-    u1, u2 = Argument(V1, 1), Argument(V1, 2)
+    u1 = Argument(V1, 1)
+    u2 = Argument(V1, 2)
     v = TestFunction(V2)
     vstar = inner(u, v) * dx
     N = ExternalOperator(u, function_space=V2, argument_slots=(vstar,))
@@ -787,19 +817,20 @@ def test_functional_derivative(V1, max_rank):
     N = ExternalOperator(u, function_space=V1)
     J = N**2 * dx
 
-    # dJ/du[v0] = dN/du(u; dJ/dN, v0)
+    # dJ/du[v0] = 2 * dN/du[v0] * N * dx
     dJdu = expand_derivatives(derivative(J, u))
-    dJdu = restructure_base_form(dJdu, max_composed_rank=max_rank)
+    dNdu = N._ufl_expr_reconstruct_(u, derivatives=(1,), argument_slots=(*N.arguments(), v0))
+    assert dJdu == as_ufl(2) * dNdu * N * dx
+    assert dJdu.arguments() == (v0,)
+
     if max_rank == 1:
         # The Form fills the dual slot of the rank-two operator.
         slots = (2 * v0 * N * dx, v0)
         expected = N._ufl_expr_reconstruct_(u, derivatives=(1,), argument_slots=slots)
     else:
         # The operator stays in the integrand.
-        dNdu = N._ufl_expr_reconstruct_(u, derivatives=(1,), argument_slots=(*N.arguments(), v0))
         expected = as_ufl(2) * dNdu * N * dx
-    assert dJdu == expected
-    assert dJdu.arguments() == (v0,)
+    assert restructure_base_form(dJdu, max_composed_rank=max_rank) == expected
 
 
 @pytest.mark.parametrize("max_rank", [1, 2])
@@ -822,15 +853,20 @@ def test_functional_hessian_through_composition(V1, max_rank):
         return N._ufl_expr_reconstruct_(M, derivatives=(n,), argument_slots=slots)
 
     # H[v0, v1] = d2N/dM2[dM/du[v0], dM/du[v1]] + dN/dM[d2M/du2[v0, v1]],
-    # where dF/dN = v * dx fills the dual slots of the rank-three operators.
+    # with both terms kept in the integrand.
+    d2N = dN(2, c(0), dM(1, c(0), a(0)), dM(1, c(0), a(1)))
+    d2M = dN(1, c(0), dM(2, c(0), a(0), a(1)))
+    H = expand_derivatives(H)
+    expected = (d2N + d2M) * dx
+    assert H == expected
+    assert H.arguments() == (a(0), a(1))
+
+    # dF/dN = v * dx fills the dual slots of the rank-three operators.
     L = TestFunction(V1) * dx
     d2N = dN(2, L, dM(1, c(0), a(0)), dM(1, c(0), a(1)))
     d2M = dN(1, L, dM(2, c(0), a(0), a(1)))
-    H = expand_derivatives(H)
-    H = restructure_base_form(H, max_composed_rank=max_rank)
     expected = FormSum((d2N, 1), (d2M, 1))
-    assert H == expected
-    assert H.arguments() == (a(0), a(1))
+    assert restructure_base_form(H, max_composed_rank=max_rank) == expected
 
 
 def test_extraction_external_operator_composition(V1, V2, V3, V4, V5):
@@ -872,10 +908,12 @@ def test_extraction_external_operator_composition(V1, V2, V3, V4, V5):
 
 @pytest.mark.parametrize("tensor_algebra", [False, True])
 def test_expand_coefficient_derivatives_in_operator_slot(V1, tensor_algebra):
-    u, h = Coefficient(V1), Coefficient(V1)
+    u = Coefficient(V1)
+    h = Coefficient(V1)
     N = ExternalOperator(u, function_space=V1)
     (vstar,) = N.argument_slots()
-    expression, expected = u**2, 2 * h * u
+    expression = u**2
+    expected = 2 * h * u
     if tensor_algebra:
         expression = inner(grad(u), grad(h))
         expected = inner(grad(h), grad(h))
@@ -923,6 +961,12 @@ def test_derivative_through_nested_operators_and_interpolations(V1):
     # J[v, uhat] = F[dN2/dM[I[dN1/dI[I[uhat]]]]], with F[Nhat] = <Nhat, v> * dx
     vstar = Argument(V1.dual(), 0)
     Iuhat = Interpolate(uhat, V1)
+    dN1 = N1._ufl_expr_reconstruct_(Iu, derivatives=(1,), argument_slots=(vstar, Iuhat))
+    dN2 = N2._ufl_expr_reconstruct_(
+        M, derivatives=(1,), argument_slots=(vstar, Interpolate(dN1, V1))
+    )
+    assert J == apply_algebra_lowering(inner(dN2, v) * dx)
+
     dN1 = N1._ufl_expr_reconstruct_(Iu, derivatives=(1,), argument_slots=(vstar, uhat))
     dN2 = N2._ufl_expr_reconstruct_(M, derivatives=(1,), argument_slots=(vstar, uhat))
     F = apply_algebra_lowering(inner(uhat, v) * dx)

@@ -95,6 +95,13 @@ class BaseFormOperator(Operator, BaseForm, Counted):
     map from ``w_1`` to the dual of ``v_0``. With ``w_0``, it is a linear map from ``v_1``
     to the dual of ``w_0``. Interpolate has ``u == uhat``, so ``Interpolate(e, A)`` is
     ``N(e; A, e)``.
+
+    For a 0-form operator ``I0``, negation, addition or subtraction of other forms,
+    and scaling by a scalar constant produce a ``FormSum``. Other operations,
+    such as ``I0 * u``, ``I0 + c``, ``I0**2``, ``abs(I0)`` and ``2 / I0``, produce
+    expressions, where ``u`` is a Coefficient and ``c`` is a Constant. Consequently,
+    ``-I0 * u`` and ``(2 * I0) * u`` raise a TypeError: the intermediate ``FormSum``
+    cannot multiply a Coefficient. Use ``-(I0 * u)`` or ``2 * (I0 * u)`` instead.
     """
 
     ufl_operands: tuple[Expr, ...]
@@ -250,11 +257,12 @@ class BaseFormOperator(Operator, BaseForm, Counted):
 
     @property
     def ufl_shape(self):
-        """Return the UFL shape of the coefficient produced by the operator."""
-        if len(self.arguments()) == 0:
-            return ()
-        arg, *_ = self.arguments()
-        return arg._ufl_shape
+        """Return the value shape in the operator output space.
+
+        Applying a derivative to its directions leaves the output shape unchanged,
+        independently of the shapes and numbers of the slot arguments.
+        """
+        return self._function_space.value_shape
 
     def ufl_function_space(self):
         """Return the function space associated to the operator.
@@ -342,7 +350,7 @@ class BaseFormOperator(Operator, BaseForm, Counted):
         return self._parent_type.__truediv__(self, other)
 
     def __rtruediv__(self, other):
-        """Divide by the operator, unless it is a form, which cannot divide."""
-        if self._parent_type is BaseForm:
+        """Divide by the operator, unless it is a form with arguments."""
+        if self._parent_type is BaseForm and self.arguments():
             return NotImplemented
         return Operator.__rtruediv__(self, other)
