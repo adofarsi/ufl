@@ -483,6 +483,8 @@ def test_extract_domains_nested_base_form():
 @pytest.mark.parametrize("shape", [(), (3,), (2, 2)])
 def test_nonspatial_coefficient_on_different_meshes(shape):
     domain = ufl.NonSpatialDomain()
+    assert isinstance(domain, ufl.AbstractDomain)
+    assert not isinstance(domain, ufl.AbstractGeometricDomain)
     element = RealElement(ufl.vertex, shape)
     space = FunctionSpace(domain, element)
     theta = Coefficient(space)
@@ -493,6 +495,7 @@ def test_nonspatial_coefficient_on_different_meshes(shape):
 
     for cell in (interval, triangle):
         mesh = Mesh(LagrangeElement(cell, 1, (cell.topological_dimension,)))
+        assert isinstance(mesh, ufl.AbstractGeometricDomain)
         u = Coefficient(FunctionSpace(mesh, LagrangeElement(cell, 1)))
         component = (0,) * len(shape)
         value = theta[component] if shape else theta

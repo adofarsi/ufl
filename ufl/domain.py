@@ -9,6 +9,7 @@
 from __future__ import annotations  # To avoid cyclic import when type-hinting.
 
 import numbers
+from abc import ABC, abstractmethod
 from collections.abc import Iterable, Sequence
 from typing import TYPE_CHECKING
 
@@ -34,13 +35,14 @@ __all_classes__ = [
 ]
 
 
-class AbstractDomain:
+class AbstractDomain(ABC):
     """Base class for domains on which function spaces can be defined.
 
     Geometric domain implementations derive from AbstractGeometricDomain,
     which supplies topological and geometric dimensions.
     """
 
+    @abstractmethod
     def can_make_function_space(self, element: AbstractFiniteElement) -> bool:
         """Return whether the domain supports the element."""
         raise NotImplementedError
