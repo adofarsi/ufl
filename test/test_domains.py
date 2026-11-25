@@ -507,6 +507,8 @@ def test_nonspatial_coefficient_on_different_meshes(shape):
 
     with pytest.raises(ValueError, match="geometric domain"):
         dx(domain)
+    with pytest.raises(ValueError, match="geometric domain"):
+        ufl.SpatialCoordinate(domain)
     with pytest.raises(ValueError, match="spatially constant"):
         FunctionSpace(domain, LagrangeElement(triangle, 1))
 

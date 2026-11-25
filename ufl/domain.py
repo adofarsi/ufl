@@ -1,4 +1,4 @@
-"""Types for representing a geometric domain."""
+"""Domains of function spaces and geometric domains of integration."""
 
 # Copyright (C) 2008-2016 Martin Sandve Alnæs
 #
@@ -35,7 +35,11 @@ __all_classes__ = [
 
 
 class AbstractDomain:
-    """Base class for domains on which function spaces can be defined."""
+    """Base class for domains on which function spaces can be defined.
+
+    Geometric domain implementations derive from AbstractGeometricDomain,
+    which supplies topological and geometric dimensions.
+    """
 
     def can_make_function_space(self, element: AbstractFiniteElement) -> bool:
         """Return whether the domain supports the element."""
@@ -54,7 +58,11 @@ class NonSpatialDomain(AbstractDomain, UFLObject):
         """Accept elements whose values are independent of the geometry."""
         from ufl.pullback import identity_pullback
 
-        return element.sobolev_space == HInf and element.pullback == identity_pullback
+        return (
+            element.sobolev_space == HInf
+            and element.is_cellwise_constant()
+            and element.pullback == identity_pullback
+        )
 
     def _ufl_hash_data_(self):
         """Identify the domain in symbolic expressions."""
@@ -139,9 +147,9 @@ class AbstractGeometricDomain(AbstractDomain):
 
 # TODO: Would it be useful to have a domain representing R^d? E.g. for
 # Expression.
-# class EuclideanSpace(AbstractDomain):
+# class EuclideanSpace(AbstractGeometricDomain):
 #     def __init__(self, geometric_dimension):
-#         AbstractDomain.__init__(self, geometric_dimension, geometric_dimension)
+#         super().__init__(geometric_dimension, geometric_dimension)
 
 
 @attach_ufl_id
