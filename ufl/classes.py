@@ -84,7 +84,7 @@ from ufl.differentiation import (
     ReferenceGrad,
     VariableDerivative,
 )
-from ufl.domain import AbstractDomain, Mesh, MeshView
+from ufl.domain import AbstractDomain, AbstractGeometricDomain, Mesh, MeshView, NonSpatialDomain
 from ufl.equation import Equation
 from ufl.exprcontainers import ExprList, ExprMapping
 from ufl.finiteelement import AbstractFiniteElement
@@ -226,6 +226,7 @@ __all__ = [
     "AbstractDomain",
     "AbstractFiniteElement",
     "AbstractFunctionSpace",
+    "AbstractGeometricDomain",
     "AbstractPullback",
     "Acos",
     "Action",
@@ -366,6 +367,7 @@ __all__ = [
     "NablaDiv",
     "NablaGrad",
     "NegativeRestricted",
+    "NonSpatialDomain",
     "NonStandardPullbackException",
     "NotCondition",
     "Operator",

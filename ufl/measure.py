@@ -16,7 +16,7 @@ from itertools import chain
 from ufl.checks import is_true_ufl_scalar
 from ufl.constantvalue import as_ufl
 from ufl.core.expr import Expr
-from ufl.domain import AbstractDomain, as_domain, extract_domains
+from ufl.domain import AbstractDomain, AbstractGeometricDomain, as_domain, extract_domains
 from ufl.protocols import id_or_none
 
 # Export list for ufl.classes
@@ -149,8 +149,8 @@ class Measure:
         # Check that we either have a proper AbstractDomain or none
         if domain is not None:
             domain = as_domain(domain)
-            if not isinstance(domain, AbstractDomain):
-                raise ValueError("Invalid domain.")
+            if not isinstance(domain, AbstractGeometricDomain):
+                raise ValueError("A measure requires a geometric domain.")
         self._domain = domain
 
         # Store subdomain data

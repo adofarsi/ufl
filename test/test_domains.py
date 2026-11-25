@@ -5,9 +5,9 @@ from collections.abc import Callable
 import pytest
 import utils  # noqa: F401
 from mockobjects import MockMesh
-from utils import FiniteElement, LagrangeElement
+from utils import FiniteElement, LagrangeElement, RealElement
 
-import ufl  # noqa: F401
+import ufl
 from ufl import (
     Cell,
     Coefficient,
@@ -478,3 +478,32 @@ def test_extract_domains_nested_base_form():
     assert extract_domains(fs) == (domain,)
     assert extract_arguments(fs) == []
     assert set(extract_coefficients(fs)) == {f, g, h}
+
+
+@pytest.mark.parametrize("shape", [(), (3,), (2, 2)])
+def test_nonspatial_coefficient_on_different_meshes(shape):
+    domain = ufl.NonSpatialDomain()
+    element = RealElement(ufl.vertex, shape)
+    space = FunctionSpace(domain, element)
+    theta = Coefficient(space)
+    h = Coefficient(space)
+    assert space == FunctionSpace(domain, element)
+    assert space != FunctionSpace(ufl.NonSpatialDomain(), element)
+    assert not extract_domains(theta)
+
+    for cell in (interval, triangle):
+        mesh = Mesh(LagrangeElement(cell, 1, (cell.topological_dimension,)))
+        u = Coefficient(FunctionSpace(mesh, LagrangeElement(cell, 1)))
+        component = (0,) * len(shape)
+        value = theta[component] if shape else theta
+        objective = value * u * dx
+        dj = ufl.algorithms.expand_derivatives(ufl.derivative(objective, theta))
+        assert objective.ufl_domains() == dj.ufl_domains() == (mesh,)
+        assert dj.arguments()[0].ufl_function_space() == space
+        assert action(dj, h).equals((h[component] if shape else h) * u * dx)
+        assert objective.signature()
+
+    with pytest.raises(ValueError, match="geometric domain"):
+        dx(domain)
+    with pytest.raises(ValueError, match="spatially constant"):
+        FunctionSpace(domain, LagrangeElement(triangle, 1))

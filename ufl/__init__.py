@@ -270,7 +270,14 @@ from ufl.constantvalue import Identity, PermutationSymbol, as_ufl, zero
 from ufl.core.external_operator import ExternalOperator
 from ufl.core.interpolate import Interpolate, interpolate
 from ufl.core.multiindex import Index, indices
-from ufl.domain import AbstractDomain, Mesh, MeshSequence, MeshView
+from ufl.domain import (
+    AbstractDomain,
+    AbstractGeometricDomain,
+    Mesh,
+    MeshSequence,
+    MeshView,
+    NonSpatialDomain,
+)
 from ufl.finiteelement import AbstractFiniteElement
 from ufl.form import BaseForm, Form, FormSum, ZeroBaseForm
 from ufl.formoperators import (
@@ -467,6 +474,7 @@ __all__ = [
     "AbstractCell",
     "AbstractDomain",
     "AbstractFiniteElement",
+    "AbstractGeometricDomain",
     "AbstractPullback",
     "Action",
     "Adjoint",
@@ -523,6 +531,7 @@ __all__ = [
     "MinFacetEdgeLength",
     "MixedFunctionSpace",
     "MixedPullback",
+    "NonSpatialDomain",
     "Not",
     "Or",
     "PermutationSymbol",

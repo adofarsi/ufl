@@ -12,7 +12,7 @@
 import numpy as np
 
 from ufl.core.ufl_type import UFLObject
-from ufl.domain import join_domains
+from ufl.domain import NonSpatialDomain, join_domains
 from ufl.duals import is_dual, is_primal
 from ufl.utils.sequences import product
 
@@ -45,6 +45,9 @@ class BaseFunctionSpace(AbstractFunctionSpace, UFLObject):
             # DOLFIN hack
             # TODO: Is anything expected from element.cell in this case?
             pass
+        elif isinstance(domain, NonSpatialDomain):
+            if not domain.can_make_function_space(element):
+                raise ValueError("A nonspatial space requires a spatially constant element.")
         else:
             try:
                 domain_cell = domain.ufl_cell()
@@ -107,7 +110,7 @@ class BaseFunctionSpace(AbstractFunctionSpace, UFLObject):
     def ufl_domains(self):
         """Return ufl domains."""
         domain = self.ufl_domain()
-        if domain is None:
+        if domain is None or isinstance(domain, NonSpatialDomain):
             return ()
         else:
             return (domain,)

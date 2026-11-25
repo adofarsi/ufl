@@ -22,13 +22,56 @@ from ufl.cell import AbstractCell, CellSequence
 from ufl.core.ufl_id import attach_ufl_id
 from ufl.core.ufl_type import UFLObject
 from ufl.corealg.traversal import traverse_unique_terminals
-from ufl.sobolevspace import H1
+from ufl.sobolevspace import H1, HInf
 
 # Export list for ufl.classes
-__all_classes__ = ["AbstractDomain", "Mesh", "MeshView"]
+__all_classes__ = [
+    "AbstractDomain",
+    "AbstractGeometricDomain",
+    "Mesh",
+    "MeshView",
+    "NonSpatialDomain",
+]
 
 
 class AbstractDomain:
+    """Base class for domains on which function spaces can be defined."""
+
+    def can_make_function_space(self, element: AbstractFiniteElement) -> bool:
+        """Return whether the domain supports the element."""
+        raise NotImplementedError
+
+
+@attach_ufl_id
+class NonSpatialDomain(AbstractDomain, UFLObject):
+    """Domain for spatially constant values that can be used on any mesh."""
+
+    def __init__(self, ufl_id: int | None = None):
+        """Declare an independent domain."""
+        self._ufl_id = self._init_ufl_id(ufl_id)
+
+    def can_make_function_space(self, element: AbstractFiniteElement) -> bool:
+        """Accept elements whose values are independent of the geometry."""
+        from ufl.pullback import identity_pullback
+
+        return element.sobolev_space == HInf and element.pullback == identity_pullback
+
+    def _ufl_hash_data_(self):
+        """Identify the domain in symbolic expressions."""
+        return ("NonSpatialDomain", self._ufl_id)
+
+    def _ufl_signature_data_(self, renumbering):
+        """The declaration of a nonspatial value does not affect generated kernels."""
+        return ("NonSpatialDomain",)
+
+    def __repr__(self):
+        """Return the constructor representation."""
+        return f"NonSpatialDomain({self._ufl_id})"
+
+    __str__ = __repr__
+
+
+class AbstractGeometricDomain(AbstractDomain):
     """Symbolic representation of a geometric domain.
 
     Domain has only a geometric and a topological dimension.
@@ -102,7 +145,7 @@ class AbstractDomain:
 
 
 @attach_ufl_id
-class Mesh(AbstractDomain, UFLObject):
+class Mesh(AbstractGeometricDomain, UFLObject):
     """Symbolic representation of a mesh."""
 
     def __init__(self, coordinate_element, ufl_id=None, cargo=None):
@@ -126,7 +169,7 @@ class Mesh(AbstractDomain, UFLObject):
         # Derive dimensions from element
         (gdim,) = coordinate_element.reference_value_shape
         tdim = coordinate_element.cell.topological_dimension
-        AbstractDomain.__init__(self, tdim, gdim)
+        super().__init__(tdim, gdim)
 
     def ufl_cargo(self):
         """Return carried object that will not be used by UFL."""
@@ -184,7 +227,7 @@ class Mesh(AbstractDomain, UFLObject):
         return True
 
 
-class MeshSequence(AbstractDomain, UFLObject):
+class MeshSequence(AbstractGeometricDomain, UFLObject):
     """Symbolic representation of a mixed mesh.
 
     This class represents a collection of meshes that, along with
@@ -222,7 +265,7 @@ class MeshSequence(AbstractDomain, UFLObject):
         self._ufl_cell = CellSequence(tuple(m.ufl_cell() for m in meshes))
         (gdim,) = set(m.geometric_dimension for m in meshes)
         tdim = self._ufl_cell.topological_dimension
-        AbstractDomain.__init__(self, tdim, gdim)
+        super().__init__(tdim, gdim)
         self._meshes = tuple(meshes)
 
     def ufl_cell(self):
@@ -271,7 +314,7 @@ class MeshSequence(AbstractDomain, UFLObject):
 
 
 @attach_ufl_id
-class MeshView(AbstractDomain, UFLObject):
+class MeshView(AbstractGeometricDomain, UFLObject):
     """Symbolic representation of a mesh."""
 
     def __init__(self, mesh, topological_dimension, ufl_id=None):
@@ -285,7 +328,7 @@ class MeshView(AbstractDomain, UFLObject):
         coordinate_element = mesh.ufl_coordinate_element()
         (gdim,) = coordinate_element.value_shape
         tdim = coordinate_element.cell.topological_dimension
-        AbstractDomain.__init__(self, tdim, gdim)
+        super().__init__(tdim, gdim)
 
     def ufl_mesh(self):
         """Get the mesh."""
@@ -330,7 +373,9 @@ class MeshView(AbstractDomain, UFLObject):
 
 def as_domain(domain):
     """Convert any valid object to an AbstractDomain type."""
-    if isinstance(domain, AbstractDomain):
+    if isinstance(domain, NonSpatialDomain):
+        return domain
+    if isinstance(domain, AbstractGeometricDomain):
         # Modern UFL files and dolfin behaviour
         (domain,) = set(domain.meshes)
         return domain
@@ -367,7 +412,7 @@ def join_domains(domains: Sequence[AbstractDomain], expand_mesh_sequence: bool =
 
     """
     # Use hashing to join domains, ignore None
-    joined_domains = set(domains) - set((None,))
+    joined_domains = {d for d in domains if d is not None and not isinstance(d, NonSpatialDomain)}
     if expand_mesh_sequence:
         unrolled_joined_domains = set()
         for domain in joined_domains:
