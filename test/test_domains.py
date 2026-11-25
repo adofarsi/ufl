@@ -509,3 +509,17 @@ def test_nonspatial_coefficient_on_different_meshes(shape):
         dx(domain)
     with pytest.raises(ValueError, match="spatially constant"):
         FunctionSpace(domain, LagrangeElement(triangle, 1))
+
+
+def test_sum_nonspatial_forms_on_different_dimensions():
+    space = FunctionSpace(ufl.NonSpatialDomain(), RealElement(ufl.vertex))
+    theta = Coefficient(space)
+    meshes = tuple(
+        Mesh(LagrangeElement(c, 1, (c.topological_dimension,))) for c in (interval, triangle)
+    )
+    loss = sum(theta**2 * dx(m) for m in meshes)
+    gradient = ufl.algorithms.expand_derivatives(ufl.derivative(loss, theta))
+    assert loss.ufl_domains() == gradient.ufl_domains() == meshes
+    assert gradient.arguments()[0].ufl_function_space() == space
+    with pytest.raises(ValueError, match="different geometric dimensions"):
+        (ufl.SpatialCoordinate(meshes[0])[0] * dx(meshes[1])).ufl_domains()

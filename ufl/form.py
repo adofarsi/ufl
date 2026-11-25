@@ -24,7 +24,7 @@ from ufl.constantvalue import Zero
 from ufl.core.expr import Expr, ufl_err_str
 from ufl.core.terminal import FormArgument
 from ufl.core.ufl_type import UFLType, ufl_type
-from ufl.domain import extract_unique_domain, sort_domains
+from ufl.domain import sort_domains
 from ufl.equation import Equation
 from ufl.integral import Integral
 from ufl.utils.counted import Counted
@@ -633,29 +633,18 @@ class Form(BaseForm):
 
     def _analyze_domains(self):
         """Analyze domains."""
-        from ufl.domain import join_domains, sort_domains
+        from ufl.domain import extract_domains, join_domains, sort_domains
 
-        # Collect integration domains.
-        self._integration_domains = sort_domains(
-            join_domains([itg.ufl_domain() for itg in self._integrals])
-        )
-        # Collect domains in extra_domain_integral_type_map.
-        domains_in_extra_domain_integral_type_map = join_domains(
-            [d for itg in self._integrals for d in itg.extra_domain_integral_type_map()]
-        )
-        domains_in_extra_domain_integral_type_map -= set(self._integration_domains)
-        # Collect domains in integrands.
-        domains_in_integrands = set()
-        for o in chain(
-            self.arguments(), self.coefficients(), self.constants(), self.geometric_quantities()
-        ):
-            domain = extract_unique_domain(o, expand_mesh_sequence=False)
-            if domain is not None:
-                domains_in_integrands.update(domain.meshes)
-        domains_in_integrands -= set(self._integration_domains)
-        all_domains = self._integration_domains + sort_domains(
-            join_domains(domains_in_extra_domain_integral_type_map | domains_in_integrands)
-        )
+        # Geometry must be compatible within each integral. Separate integrals
+        # can contribute to the same functional on meshes of different dimensions.
+        integration_domains = set()
+        all_meshes = set()
+        for integral in self._integrals:
+            integration_domains.update(integral.ufl_domain().meshes)
+            domains = extract_domains(integral)
+            all_meshes.update(join_domains((*domains, *integral.extra_domain_integral_type_map())))
+        self._integration_domains = sort_domains(integration_domains)
+        all_domains = self._integration_domains + sort_domains(all_meshes - integration_domains)
         # Let problem solving environments access all domains via
         # self._domain_numbering.keys() (wrapped in extract_domains()).
         self._domain_numbering = {d: i for i, d in enumerate(all_domains)}
