@@ -155,14 +155,8 @@ def _build_coefficient_replace_map(
     for i, f in enumerate(coefficients):
         old_e = f.ufl_element()
         new_e = element_mapping.get(old_e, old_e)
-        # XXX: This is a hack to ensure that if the original
-        # coefficient had a domain, the new one does too.
-        # This should be overhauled with requirement that Expressions
-        # always have a domain.
-        domain = extract_unique_domain(f, expand_mesh_sequence=False)
-        if domain is not None:
-            new_e = FunctionSpace(domain, new_e)
-        new_f = Coefficient(new_e, count=i)
+        space = FunctionSpace(f.ufl_function_space().ufl_domain(), new_e)
+        new_f = Coefficient(space, count=i)
         new_coefficients.append(new_f)
         replace_map[f] = new_f
 

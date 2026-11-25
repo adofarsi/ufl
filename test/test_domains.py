@@ -502,6 +502,8 @@ def test_nonspatial_coefficient_on_different_meshes(shape):
         assert dj.arguments()[0].ufl_function_space() == space
         assert action(dj, h).equals((h[component] if shape else h) * u * dx)
         assert objective.signature()
+        assert compute_form_data(objective).rank == 0
+        assert compute_form_data(dj).rank == 1
 
     with pytest.raises(ValueError, match="geometric domain"):
         dx(domain)
